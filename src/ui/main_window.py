@@ -2,7 +2,7 @@ import os
 import sys
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                              QPushButton, QLabel, QFrame, QTextEdit, QFileDialog, 
-                             QApplication, QSplitter)
+                             QApplication, QSplitter, QProgressBar) # Added QProgressBar
 from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve, pyqtSignal, QSize
 from PyQt6.QtGui import QDragEnterEvent, QDropEvent
 
@@ -47,6 +47,7 @@ class MainWindow(QMainWindow):
         self.icon_menu = qta.icon('fa5s.bars', color='white')
         self.icon_scan = qta.icon('fa5s.qrcode', color='#888888')
         self.icon_hist = qta.icon('fa5s.history', color='#888888')
+        self.icon_info = qta.icon('fa5s.info-circle', color='#888888') # About Icon
         self.icon_moon = qta.icon('fa5s.moon', color='#888888')
         self.icon_sun  = qta.icon('fa5s.sun', color='#555555')
 
@@ -57,21 +58,21 @@ class MainWindow(QMainWindow):
         self.main_layout.setContentsMargins(0, 0, 0, 0)
         self.main_layout.setSpacing(0)
         
-        # 1. SIDEBAR (Reduced Width to 170)
+        # 1. SIDEBAR (Reduced to 150px)
         self.sidebar = QFrame()
         self.sidebar.setObjectName("sidebar")
-        self.sidebar.setFixedWidth(170) 
+        self.sidebar.setFixedWidth(150) 
         self.sidebar_layout = QVBoxLayout(self.sidebar)
         self.sidebar_layout.setContentsMargins(0, 10, 0, 20)
         self.sidebar_layout.setSpacing(5)
         
-        # Menu Button
+        # Menu
         self.btn_menu = QPushButton()
         self.btn_menu.setIcon(self.icon_menu)
         self.btn_menu.setIconSize(QSize(20, 20))
         self.btn_menu.clicked.connect(self.toggle_sidebar)
         
-        # Nav Buttons
+        # Nav Items
         self.btn_scan = QPushButton("  SCANNER")
         self.btn_scan.setIcon(self.icon_scan)
         self.btn_scan.setIconSize(QSize(20, 20))
@@ -79,7 +80,13 @@ class MainWindow(QMainWindow):
         self.btn_history = QPushButton("  HISTORY")
         self.btn_history.setIcon(self.icon_hist)
         self.btn_history.setIconSize(QSize(20, 20))
+        self.btn_history.clicked.connect(self.show_history_placeholder)
         
+        self.btn_about = QPushButton("  ABOUT")
+        self.btn_about.setIcon(self.icon_info)
+        self.btn_about.setIconSize(QSize(20, 20))
+        self.btn_about.clicked.connect(self.show_about_placeholder)
+
         self.btn_theme = QPushButton("  DARK MODE")
         self.btn_theme.setIcon(self.icon_moon)
         self.btn_theme.setIconSize(QSize(20, 20))
@@ -89,6 +96,7 @@ class MainWindow(QMainWindow):
         self.sidebar_layout.addSpacing(20)
         self.sidebar_layout.addWidget(self.btn_scan)
         self.sidebar_layout.addWidget(self.btn_history)
+        self.sidebar_layout.addWidget(self.btn_about)
         self.sidebar_layout.addStretch()
         self.sidebar_layout.addWidget(self.btn_theme)
         
@@ -97,15 +105,21 @@ class MainWindow(QMainWindow):
         self.content_layout = QVBoxLayout(self.content_area)
         self.content_layout.setContentsMargins(20, 20, 20, 20)
         
+        # Progress Bar (Initially Hidden)
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setFixedHeight(5)
+        self.progress_bar.setTextVisible(False)
+        self.progress_bar.setStyleSheet("QProgressBar { border: none; background: #333; } QProgressBar::chunk { background: #00FF00; }")
+        self.progress_bar.setVisible(False)
+        self.content_layout.addWidget(self.progress_bar)
+
         self.splitter = QSplitter(Qt.Orientation.Vertical)
         self.splitter.setHandleWidth(2) 
         
-        # Drop Zone
         self.drop_zone = ClickableDropZone("CLICK TO UPLOAD\n\n[ OR DRAG FILE HERE ]\n[ OR PASTE (CTRL+V) ]")
         self.drop_zone.clicked.connect(self.open_file_dialog)
         self.splitter.addWidget(self.drop_zone)
         
-        # Console
         self.console = QTextEdit()
         self.console.setObjectName("console")
         self.console.setReadOnly(True)
@@ -122,6 +136,16 @@ class MainWindow(QMainWindow):
 
     def log_message(self, message):
         self.console.append(message)
+        # Scroll to bottom
+        sb = self.console.verticalScrollBar()
+        sb.setValue(sb.maximum())
+
+    # --- CORE LOGIC (UPDATED) ---
+    def update_progress(self, value):
+        """Callback for the scanner"""
+        self.progress_bar.setValue(value)
+        # Force UI update (keeps app responsive-ish during loop)
+        QApplication.processEvents()
 
     def process_file(self, file_path):
         if not file_path or not os.path.exists(file_path):
@@ -130,36 +154,59 @@ class MainWindow(QMainWindow):
         filename = os.path.basename(file_path)
         self.log_message(f"\n[>] Processing: {filename}")
         
-        # --- DYNAMIC UI UPDATE (Better Wording) ---
-        self.drop_zone.setText(f"ANALYZING:\n{filename}\n\n[ Drop or Click to Scan Another ]")
+        # UI Prep
+        self.drop_zone.setText(f"ANALYZING:\n{filename}\n\n[ Please Wait... ]")
         self.drop_zone.setStyleSheet("color: #00FF00; border-color: #00FF00;") 
+        self.progress_bar.setVisible(True)
+        self.progress_bar.setValue(0)
         
-        raw_data = self.scanner.extract_qr(file_path)
+        # 1. Extract (Pass the progress callback)
+        # Returns a LIST now
+        found_qrs = self.scanner.extract_qr(file_path, self.update_progress)
         
-        if not raw_data:
+        self.progress_bar.setVisible(False)
+        self.drop_zone.setText(f"ANALYSIS COMPLETE:\n{filename}\n\n[ Drop or Click or Paste to Scan Another ]")
+
+        if not found_qrs:
             self.log_message("[-] No QR Code found.")
             self.drop_zone.setStyleSheet("") 
-            self.drop_zone.setText("NO QR FOUND\n\n[ Try Another File ]")
+            self.drop_zone.setText("NO QR FOUND\n\n[ Drop or Click or Paste to Scan Another ]")
             return
         
-        if raw_data.startswith("[!]"):
-            self.log_message(raw_data)
-            return
-
-        analysis = self.analyzer.analyze(raw_data)
+        # 2. Analyze All Found
+        self.log_message(f"[*] Found {len(found_qrs)} QR Code(s). Analyzing...")
         
-        if analysis["status"] == "error":
-            self.log_message(f"[!] Analysis Failed: {analysis['message']}")
-        elif analysis["type"] == "Text":
-             self.log_message(f"[i] Type: Plain Text: {analysis['original']}")
-        else:
-            self.log_message(f"[i] Type: URL")
-            self.log_message(f"[>] Destination: {analysis['final']}")
-            if len(analysis["chain"]) > 1:
-                self.log_message("[~] Redirection Chain:")
-                for i, hop in enumerate(analysis["chain"]):
-                    self.log_message(f"    {i+1}. {defang(hop)}")
+        for i, raw_data in enumerate(found_qrs):
+            if raw_data.startswith("[!]"):
+                self.log_message(raw_data)
+                continue
 
+            self.log_message(f"\n--- RESULT #{i+1} ---")
+            
+            analysis = self.analyzer.analyze(raw_data)
+            
+            if analysis["status"] == "error":
+                self.log_message(f"[!] Analysis Failed: {analysis['message']}")
+            elif analysis["type"] == "Text":
+                self.log_message(f"[i] Type: Plain Text: {analysis['original']}")
+            else:
+                self.log_message(f"[i] Type: URL")
+                self.log_message(f"[>] Destination: {analysis['final']}")
+                if len(analysis["chain"]) > 1:
+                    self.log_message("[~] Redirection Chain:")
+                    for j, hop in enumerate(analysis["chain"]):
+                        self.log_message(f"    {j+1}. {defang(hop)}")
+        
+        self.log_message("\n[*] Batch Analysis Complete.")
+
+    # --- PLACEHOLDERS ---
+    def show_history_placeholder(self):
+        self.log_message("\n[!] History Module: Not yet implemented (Coming Soon)")
+        
+    def show_about_placeholder(self):
+        self.log_message("\n[i] QuishGuard v1.0\n[i] Built with Python & PyQt6")
+
+    # --- INPUTS (Unchanged) ---
     def open_file_dialog(self):
         file_path, _ = QFileDialog.getOpenFileName(self, "Select Image", "", "Files (*.png *.jpg *.jpeg *.pdf)")
         if file_path:
@@ -189,10 +236,10 @@ class MainWindow(QMainWindow):
             elif mime_data.hasUrls():
                 self.process_file(mime_data.urls()[0].toLocalFile())
 
-    # --- UI ANIMATIONS (Fixing Alignment) ---
+    # --- ANIMATIONS (Width 150) ---
     def toggle_sidebar(self):
         width = self.sidebar.width()
-        target_width = 60 if width == 170 else 170 # Updated to 170
+        target_width = 60 if width == 150 else 150 
         
         self.animation = QPropertyAnimation(self.sidebar, b"minimumWidth")
         self.animation.setDuration(300)
@@ -209,35 +256,42 @@ class MainWindow(QMainWindow):
         self.anim_max.start()
         
         if target_width == 60:
-            # Collapsed: Center Icons
+            # Collapsed
             self.btn_menu.setStyleSheet("text-align: center; padding-left: 0;")
             self.btn_scan.setStyleSheet("text-align: center; padding-left: 0;")
             self.btn_history.setStyleSheet("text-align: center; padding-left: 0;")
+            self.btn_about.setStyleSheet("text-align: center; padding-left: 0;")
             self.btn_theme.setStyleSheet("text-align: center; padding-left: 0;")
             
             self.btn_scan.setText("")
             self.btn_history.setText("")
+            self.btn_about.setText("")
             self.btn_theme.setText("")
             self.is_sidebar_expanded = False
         else:
-            # Expanded: Left Align (Reset Style)
-            self.btn_menu.setStyleSheet("") # Reverts to styles.py default (Left align)
+            # Expanded
+            self.btn_menu.setStyleSheet("") 
             self.btn_scan.setStyleSheet("")
             self.btn_history.setStyleSheet("")
+            self.btn_about.setStyleSheet("")
             self.btn_theme.setStyleSheet("")
             
             self.btn_scan.setText("  SCANNER")
             self.btn_history.setText("  HISTORY")
+            self.btn_about.setText("  ABOUT")
             self.btn_theme.setText("  DARK MODE" if self.is_dark_mode else "  LIGHT MODE")
             self.is_sidebar_expanded = True
 
     def toggle_theme(self):
         if self.is_dark_mode:
             self.setStyleSheet(Theme.LIGHT_STYLES)
+            # Update icons
             self.icon_scan = qta.icon('fa5s.qrcode', color='#555555')
             self.icon_hist = qta.icon('fa5s.history', color='#555555')
+            self.icon_info = qta.icon('fa5s.info-circle', color='#555555')
             self.btn_scan.setIcon(self.icon_scan)
             self.btn_history.setIcon(self.icon_hist)
+            self.btn_about.setIcon(self.icon_info)
             self.btn_theme.setIcon(self.icon_sun)
             self.btn_theme.setText("" if not self.is_sidebar_expanded else "  LIGHT MODE")
             self.is_dark_mode = False
@@ -245,8 +299,10 @@ class MainWindow(QMainWindow):
             self.setStyleSheet(Theme.DARK_STYLES)
             self.icon_scan = qta.icon('fa5s.qrcode', color='#888888')
             self.icon_hist = qta.icon('fa5s.history', color='#888888')
+            self.icon_info = qta.icon('fa5s.info-circle', color='#888888')
             self.btn_scan.setIcon(self.icon_scan)
             self.btn_history.setIcon(self.icon_hist)
+            self.btn_about.setIcon(self.icon_info)
             self.btn_theme.setIcon(self.icon_moon)
             self.btn_theme.setText("" if not self.is_sidebar_expanded else "  DARK MODE")
             self.is_dark_mode = True

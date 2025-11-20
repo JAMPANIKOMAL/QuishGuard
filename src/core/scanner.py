@@ -6,76 +6,77 @@ import fitz  # PyMuPDF
 
 class ScannerEngine:
     """
-    Handles the processing of images AND PDFs to extract QR code data.
+    Handles the processing of images AND PDFs.
+    Updated to find MULTIPLE QR codes and report progress.
     """
     
-    def extract_qr(self, file_path):
+    def extract_qr(self, file_path, progress_callback=None):
         """
-        Detects file type and routes to the correct scanner.
-        Returns the decoded string or None.
+        Returns a LIST of found QR strings.
+        progress_callback: function(int) that accepts a percentage (0-100).
         """
         if not os.path.exists(file_path):
-            return "[!] Error: File does not exist."
+            return ["[!] Error: File does not exist."]
         
-        # Check if it's a PDF
+        # Initialize results list
+        found_qrs = []
+        
         if file_path.lower().endswith(".pdf"):
-            return self._scan_pdf(file_path)
+            found_qrs = self._scan_pdf(file_path, progress_callback)
         else:
-            return self._scan_image(file_path)
+            # Image: Simulate 0 -> 100% progress for consistency
+            if progress_callback: progress_callback(10)
+            res = self._scan_image(file_path)
+            if res: found_qrs.append(res)
+            if progress_callback: progress_callback(100)
+
+        # Remove duplicates and return
+        return list(set(found_qrs))
 
     def _scan_image(self, file_path):
-        """Standard Image Scanning (OpenCV)"""
         img = cv2.imread(file_path)
-        
-        if img is None:
-            return "[!] Error: OpenCV could not read the file. Is it a valid image?"
-
+        if img is None: return None
         return self._decode_frame(img)
 
-    def _scan_pdf(self, file_path):
-        """
-        PDF Scanning: Renders pages to images in memory.
-        """
+    def _scan_pdf(self, file_path, progress_callback):
+        results = []
         try:
             doc = fitz.open(file_path)
+            total_pages = len(doc)
             
-            # Iterate through every page
-            for page_num in range(len(doc)):
-                page = doc.load_page(page_num)
-                
-                # Render page to an image (Zoom=2 for better QR resolution)
+            for i, page in enumerate(doc):
+                # Update Progress Bar
+                if progress_callback:
+                    percent = int(((i + 1) / total_pages) * 100)
+                    progress_callback(percent)
+
+                # Render page (Zoom=2 for quality)
                 pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
                 
-                # Convert PyMuPDF Pixmap to Numpy Array (for OpenCV/pyzbar)
-                # pix.samples is the raw byte data
+                # Convert to format OpenCV can read
                 if pix.n < 3:
-                    # Grayscale
                     img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.h, pix.w)
                     img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
                 else:
-                    # RGB
                     img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.h, pix.w, pix.n)
-                    # PyMuPDF gives RGB, OpenCV expects BGR usually, but pyzbar handles RGB fine.
-                    # We convert just to be safe and standard.
                     img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
                 
-                # Scan this page
-                result = self._decode_frame(img)
-                
-                if result:
-                    return result # Return immediately if found
+                # Scan page
+                decoded = self._decode_frame(img)
+                if decoded:
+                    results.append(decoded)
             
-            return None # No QR found in entire PDF
+            return results
             
         except Exception as e:
-            return f"[!] PDF Error: {str(e)}"
+            return [f"[!] PDF Error: {str(e)}"]
 
     def _decode_frame(self, img):
-        """Helper: Decodes a single numpy image array"""
         try:
             decoded_objects = decode(img)
             if not decoded_objects:
                 return None
+            # For now, return the first QR found on a single page
             return decoded_objects[0].data.decode("utf-8")
-        except Exception as e:
-            return f"[!] Decode Error: {str(e)}"
+        except:
+            return None
