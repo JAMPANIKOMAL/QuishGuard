@@ -1,37 +1,52 @@
 import os
+import sys
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-                             QPushButton, QLabel, QFrame, QTextEdit)
-from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve
+                             QPushButton, QLabel, QFrame, QTextEdit, QFileDialog)
+from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve, pyqtSignal
 from PyQt6.QtGui import QDragEnterEvent, QDropEvent
 
 from src.ui.styles import Theme
-from src.core.scanner import ScannerEngine # Import our new brain
+from src.core.scanner import ScannerEngine
 
+# --- CUSTOM WIDGET: CLICKABLE LABEL ---
+class ClickableDropZone(QLabel):
+    clicked = pyqtSignal() # Signal to tell the window we were clicked
+
+    def __init__(self, text, parent=None):
+        super().__init__(text, parent)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setObjectName("drop_zone") # Keep style
+        # Set policy to ensure it accepts clicks
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+
+# --- MAIN WINDOW ---
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         
-        # Initialize the Brain
         self.scanner = ScannerEngine()
         
         # Window Setup
         self.setWindowTitle("QuishGuard | Phishing Detector")
         self.resize(1000, 700)
-        self.setAcceptDrops(True) # <--- CRITICAL: Enables Drag & Drop for the whole window
+        self.setAcceptDrops(True) 
         
         # State
         self.is_dark_mode = True
         self.is_sidebar_expanded = True
         
-        # Main Container
+        # Main Layout Setup
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
-        
         self.main_layout = QHBoxLayout(self.central_widget)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
         self.main_layout.setSpacing(0)
         
-        # --- 1. SIDEBAR ---
+        # --- SIDEBAR ---
         self.sidebar = QFrame()
         self.sidebar.setObjectName("sidebar")
         self.sidebar.setFixedWidth(220)
@@ -47,7 +62,6 @@ class MainWindow(QMainWindow):
         
         self.btn_scan = QPushButton(" SCANNER")
         self.btn_history = QPushButton(" HISTORY")
-        
         self.btn_theme = QPushButton(" ☾  DARK MODE")
         self.btn_theme.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_theme.clicked.connect(self.toggle_theme)
@@ -58,21 +72,21 @@ class MainWindow(QMainWindow):
         self.sidebar_layout.addStretch()
         self.sidebar_layout.addWidget(self.btn_theme)
         
-        # --- 2. CONTENT AREA ---
+        # --- CONTENT AREA ---
         self.content_area = QWidget()
         self.content_layout = QVBoxLayout(self.content_area)
         self.content_layout.setContentsMargins(20, 20, 20, 20)
         
-        self.drop_zone = QLabel("DRAG & DROP IMAGE HERE\n\n[ OR PASTE FROM CLIPBOARD ]")
-        self.drop_zone.setObjectName("drop_zone")
-        self.drop_zone.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # NEW: Clickable Drop Zone
+        self.drop_zone = ClickableDropZone("CLICK TO UPLOAD\n\n[ OR DRAG & DROP FILE HERE ]")
+        self.drop_zone.clicked.connect(self.open_file_dialog) # Connect click to function
         
         self.console = QTextEdit()
         self.console.setObjectName("console")
         self.console.setReadOnly(True)
         self.console.setFixedHeight(150)
         self.log_message("[*] QuishGuard System Initialized...")
-        self.log_message("[*] Engine ready. Waiting for QR Codes...")
+        self.log_message("[*] Engine ready. Drop a file or click to upload.")
         
         self.content_layout.addWidget(self.drop_zone, stretch=2)
         self.content_layout.addWidget(self.console, stretch=1)
@@ -82,39 +96,71 @@ class MainWindow(QMainWindow):
         
         self.setStyleSheet(Theme.DARK_STYLES)
 
-    # --- LOGGING HELPER ---
+    # --- LOGGING ---
     def log_message(self, message):
-        """Adds a message to the bottom console"""
         self.console.append(message)
+
+    # --- FILE HANDLING LOGIC (The Fix) ---
+    def process_file(self, file_path):
+        """Common function to process a file path from any source"""
+        if not file_path:
+            return
+
+        # Clean the path for Windows
+        file_path = os.path.normpath(file_path)
+        
+        self.log_message(f"\n[>] Analyzing file: {os.path.basename(file_path)}")
+        
+        if not os.path.exists(file_path):
+             self.log_message(f"[!] Error: System cannot find path: {file_path}")
+             return
+
+        # CALL THE BRAIN
+        result = self.scanner.extract_qr(file_path)
+        
+        if result:
+            if result.startswith("[!]"): 
+                self.log_message(result)
+            else:
+                self.log_message(f"[+] QR DETECTED: {result}")
+                self.log_message("[*] Analysis required for this URL.")
+        else:
+            self.log_message("[-] No QR Code found.")
+
+    def open_file_dialog(self):
+        """Opens the Windows File Explorer"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, 
+            "Select Image", 
+            "", 
+            "Images (*.png *.jpg *.jpeg *.bmp *.pdf)"
+        )
+        if file_path:
+            self.process_file(file_path)
 
     # --- DRAG AND DROP EVENTS ---
     def dragEnterEvent(self, event: QDragEnterEvent):
-        """Triggered when a user drags a file over the window"""
         if event.mimeData().hasUrls():
             event.accept()
         else:
             event.ignore()
 
     def dropEvent(self, event: QDropEvent):
-        """Triggered when the user releases the file"""
-        files = [u.toLocalFile() for u in event.mimeData().urls()]
-        
-        for file_path in files:
-            self.log_message(f"\n[>] Analyzing file: {os.path.basename(file_path)}")
+        """Bulletproof Drop Handler"""
+        for url in event.mimeData().urls():
+            # Method 1: Standard Qt (Works 90% of time)
+            file_path = url.toLocalFile()
             
-            # CALL THE BRAIN
-            result = self.scanner.extract_qr(file_path)
+            # Method 2: Fallback for raw paths (The Fix)
+            if not file_path:
+                file_path = url.path()
+                # Windows Fix: remove leading slash if present (e.g. /C:/Users -> C:/Users)
+                if os.name == 'nt' and file_path.startswith('/'):
+                    file_path = file_path[1:]
             
-            if result:
-                if result.startswith("[!]"): # Internal Error
-                    self.log_message(result)
-                else:
-                    self.log_message(f"[+] QR DETECTED: {result}")
-                    self.log_message("[*] Analysis required for this URL.")
-            else:
-                self.log_message("[-] No QR Code found in this image.")
+            self.process_file(file_path)
 
-    # --- UI ANIMATIONS (Keep these same as before) ---
+    # --- ANIMATIONS (Unchanged) ---
     def toggle_sidebar(self):
         width = self.sidebar.width()
         target_width = 60 if width == 220 else 220
