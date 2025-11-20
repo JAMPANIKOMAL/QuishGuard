@@ -16,6 +16,7 @@ from src.core.scanner import ScannerEngine
 from src.core.analyzer import URLAnalyzer
 from src.utils.history import HistoryManager 
 
+# --- CUSTOM WIDGET 1: DROPPABLE LABEL ---
 class ClickableDropZone(QLabel):
     clicked = pyqtSignal() 
     def __init__(self, text, parent=None):
@@ -29,9 +30,53 @@ class ClickableDropZone(QLabel):
         if event.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit()
 
+# --- CUSTOM WIDGET 2: CONSOLE WITH FLOATING BUTTON ---
+class OverlayConsole(QTextEdit):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("console")
+        self.setReadOnly(True)
+        
+        # Create the Floating Button as a child of this TextEdit
+        self.btn_save = QPushButton("  Save Report", self)
+        self.btn_save.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_save.setVisible(False) # Hidden by default
+        
+        # Custom Style for the floating button
+        self.btn_save.setStyleSheet("""
+            QPushButton {
+                background-color: #222;
+                color: #AAA;
+                border: 1px solid #444;
+                border-radius: 4px;
+                padding: 5px 10px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #333;
+                color: #FFF;
+                border-color: #00FF00;
+            }
+        """)
+        
+    def resizeEvent(self, event):
+        # Keep button pinned to Bottom-Right
+        super().resizeEvent(event)
+        padding = 20
+        btn_w = self.btn_save.sizeHint().width() + 10
+        btn_h = self.btn_save.sizeHint().height()
+        
+        # Move to (Width - ButtonWidth - Padding, Height - ButtonHeight - Padding)
+        self.btn_save.move(
+            self.viewport().width() - btn_w - padding,
+            self.viewport().height() - btn_h - 10
+        )
+
+# --- MAIN WINDOW ---
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+        
         self.scanner = ScannerEngine()
         self.analyzer = URLAnalyzer()
         self.history_manager = HistoryManager()
@@ -45,14 +90,16 @@ class MainWindow(QMainWindow):
         self.is_dark_mode = True
         self.is_sidebar_expanded = True 
         
+        # Icons
         self.icon_menu = qta.icon('fa5s.bars', color='white')
         self.icon_scan = qta.icon('fa5s.qrcode', color='#888888')
         self.icon_hist = qta.icon('fa5s.history', color='#888888')
         self.icon_info = qta.icon('fa5s.info-circle', color='#888888') 
-        self.icon_save = qta.icon('fa5s.file-export', color='#888888') 
+        self.icon_save = qta.icon('fa5s.file-download', color='#888888') 
         self.icon_moon = qta.icon('fa5s.moon', color='#888888')
         self.icon_sun  = qta.icon('fa5s.sun', color='#555555')
 
+        # --- LAYOUT ---
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
         self.main_layout = QHBoxLayout(self.central_widget)
@@ -80,6 +127,7 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(Theme.DARK_STYLES)
         self.log_message("[*] QuishGuard Pro Loaded.")
 
+    # --- UI SETUP ---
     def init_sidebar(self):
         self.sidebar = QFrame()
         self.sidebar.setObjectName("sidebar")
@@ -106,6 +154,7 @@ class MainWindow(QMainWindow):
     def init_scanner_ui(self):
         layout = QVBoxLayout(self.page_scanner)
         layout.setContentsMargins(20, 20, 20, 20)
+        
         self.splitter = QSplitter(Qt.Orientation.Vertical)
         self.splitter.setHandleWidth(2)
         
@@ -113,6 +162,7 @@ class MainWindow(QMainWindow):
         self.drop_zone.clicked.connect(self.open_file_dialog)
         self.splitter.addWidget(self.drop_zone)
         
+        # Console Container
         console_widget = QWidget()
         console_layout = QVBoxLayout(console_widget)
         console_layout.setContentsMargins(0, 0, 0, 0)
@@ -123,20 +173,14 @@ class MainWindow(QMainWindow):
         self.progress_bar.setStyleSheet("QProgressBar { border: none; background: #222; } QProgressBar::chunk { background: #00FF00; }")
         self.progress_bar.setVisible(False)
         
-        self.console = QTextEdit()
-        self.console.setObjectName("console")
-        self.console.setReadOnly(True)
-        
-        # Save Button - Initially HIDDEN (setVisible False)
-        self.btn_save_report = QPushButton(" Save Report to Disk")
-        self.btn_save_report.setIcon(self.icon_save)
-        self.btn_save_report.setFixedSize(160, 30)
-        self.btn_save_report.clicked.connect(self.save_report)
-        self.btn_save_report.setVisible(False) # <--- HIDDEN
+        # Use our new OverlayConsole instead of standard QTextEdit
+        self.console = OverlayConsole()
+        # Connect the floating button inside it
+        self.console.btn_save.clicked.connect(self.save_report)
+        self.console.btn_save.setIcon(self.icon_save)
         
         console_layout.addWidget(self.progress_bar)
         console_layout.addWidget(self.console)
-        console_layout.addWidget(self.btn_save_report, alignment=Qt.AlignmentFlag.AlignRight)
         
         self.splitter.addWidget(console_widget)
         self.splitter.setSizes([500, 200])
@@ -148,7 +192,7 @@ class MainWindow(QMainWindow):
         title = QLabel("SCAN HISTORY"); title.setStyleSheet("font-size: 24px; font-weight: bold; color: #888;")
         layout.addWidget(title)
         self.table = QTableWidget()
-        self.table.setColumnCount(4)
+        self.table.setColumnCount(4) 
         self.table.setHorizontalHeaderLabels(["Time", "File", "Verdict", "Content"])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.setStyleSheet("background-color: #1E1E1E; color: #CCC; border: 1px solid #333; gridline-color: #333;")
@@ -168,6 +212,7 @@ class MainWindow(QMainWindow):
         desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title); layout.addWidget(desc)
 
+    # --- LOGIC ---
     def switch_page(self, index):
         self.stack.setCurrentIndex(index)
         if index == 1: self.load_history_data()
@@ -178,14 +223,11 @@ class MainWindow(QMainWindow):
         for row, entry in enumerate(data):
             self.table.setItem(row, 0, QTableWidgetItem(entry.get("timestamp", "")))
             self.table.setItem(row, 1, QTableWidgetItem(entry.get("file", "")))
-            
-            # Color code the Verdict column
             verdict = entry.get("type", "")
             item = QTableWidgetItem(verdict)
             if "HIGH RISK" in verdict: item.setForeground(Qt.GlobalColor.red)
             elif "SAFE" in verdict: item.setForeground(Qt.GlobalColor.green)
             self.table.setItem(row, 2, item)
-            
             self.table.setItem(row, 3, QTableWidgetItem(entry.get("content", "")))
 
     def log_message(self, message):
@@ -204,7 +246,6 @@ class MainWindow(QMainWindow):
         if path:
             try:
                 with open(path, "w", encoding="utf-8") as f:
-                    # WRITE PROFESSIONAL REPORT
                     f.write("======================================================================\n")
                     f.write("                     QUISHGUARD FORENSIC REPORT                       \n")
                     f.write("======================================================================\n")
@@ -226,8 +267,8 @@ class MainWindow(QMainWindow):
         self.stack.setCurrentIndex(0)
         if not file_path or not os.path.exists(file_path): return
 
-        self.console.clear() # AUTO-CLEAR
-        self.btn_save_report.setVisible(False) # HIDE BUTTON
+        self.console.clear() 
+        self.console.btn_save.setVisible(False) # Access button inside custom console
         
         filename = os.path.basename(file_path)
         self.current_file_name = filename
@@ -243,7 +284,7 @@ class MainWindow(QMainWindow):
         if not found_qrs:
             self.log_message("[-] No QR Code found.")
             self.drop_zone.setStyleSheet(""); self.drop_zone.setText("NO QR FOUND\n\n[ Drop or Click or Paste to Scan Another ]")
-            self.btn_save_report.setVisible(True)
+            self.console.btn_save.setVisible(True)
             return
         
         self.log_message(f"[*] Found {len(found_qrs)} QR Code(s). Analyzing...")
@@ -255,13 +296,12 @@ class MainWindow(QMainWindow):
             self.log_message(f"\n--- RESULT #{i+1} ---")
             analysis = self.analyzer.analyze(raw_data)
             
-            # DISPLAY VERDICT IN CONSOLE
             verdict = analysis.get("verdict", "UNKNOWN")
             score = analysis.get("score", 0)
             
             if verdict == "HIGH RISK":
                 self.log_message(f"!!! VERDICT: HIGH RISK (Score: {score}) !!!")
-                self.console.setTextColor(Qt.GlobalColor.red) # Highlight Red
+                self.console.setTextColor(Qt.GlobalColor.red) 
             elif verdict == "SUSPICIOUS":
                 self.log_message(f"(!) VERDICT: SUSPICIOUS (Score: {score})")
                 self.console.setTextColor(Qt.GlobalColor.yellow)
@@ -269,16 +309,13 @@ class MainWindow(QMainWindow):
                 self.log_message(f"[+] VERDICT: SAFE")
                 self.console.setTextColor(Qt.GlobalColor.green)
 
-            # Display Flags
             if "flags" in analysis:
                 for flag in analysis["flags"]:
                      self.log_message(f"    [x] FLAG: {flag}")
             
-            # Reset Color
             self.console.setTextColor(Qt.GlobalColor.green) 
 
             content_preview = analysis.get('final', analysis.get('original', 'N/A'))
-            # Save Verdict to History
             self.history_manager.add_entry(filename, verdict, content_preview)
 
             if analysis["type"] == "URL":
@@ -291,9 +328,9 @@ class MainWindow(QMainWindow):
                 self.log_message(f"[>] Content: {analysis['original']}")
 
         self.log_message("\n[*] Batch Analysis Complete.")
-        self.btn_save_report.setVisible(True) # SHOW BUTTON NOW
+        self.console.btn_save.setVisible(True) # Show floating button
 
-    # --- INPUTS ---
+    # --- INPUTS & ANIMATIONS ---
     def open_file_dialog(self):
         file_path, _ = QFileDialog.getOpenFileName(self, "Select Image", "", "Files (*.png *.jpg *.jpeg *.pdf)")
         if file_path: self.process_file(file_path)
@@ -323,8 +360,8 @@ class MainWindow(QMainWindow):
         if self.is_dark_mode:
             self.setStyleSheet(Theme.LIGHT_STYLES); self.is_dark_mode = False
             self.btn_theme.setText("" if not self.is_sidebar_expanded else "  LIGHT MODE"); self.btn_theme.setIcon(self.icon_sun)
-            self.btn_scan.setIcon(qta.icon('fa5s.qrcode', color='#555')); self.btn_hist.setIcon(qta.icon('fa5s.history', color='#555')); self.btn_about.setIcon(qta.icon('fa5s.info-circle', color='#555')); self.btn_save_report.setIcon(qta.icon('fa5s.file-export', color='#555'))
+            self.btn_scan.setIcon(qta.icon('fa5s.qrcode', color='#555')); self.btn_hist.setIcon(qta.icon('fa5s.history', color='#555')); self.btn_about.setIcon(qta.icon('fa5s.info-circle', color='#555')); self.console.btn_save.setIcon(qta.icon('fa5s.file-download', color='#555'))
         else:
             self.setStyleSheet(Theme.DARK_STYLES); self.is_dark_mode = True
             self.btn_theme.setText("" if not self.is_sidebar_expanded else "  DARK MODE"); self.btn_theme.setIcon(self.icon_moon)
-            self.btn_scan.setIcon(qta.icon('fa5s.qrcode', color='#888')); self.btn_hist.setIcon(qta.icon('fa5s.history', color='#888')); self.btn_about.setIcon(qta.icon('fa5s.info-circle', color='#888')); self.btn_save_report.setIcon(qta.icon('fa5s.file-export', color='#888'))
+            self.btn_scan.setIcon(qta.icon('fa5s.qrcode', color='#888')); self.btn_hist.setIcon(qta.icon('fa5s.history', color='#888')); self.btn_about.setIcon(qta.icon('fa5s.info-circle', color='#888')); self.console.btn_save.setIcon(qta.icon('fa5s.file-download', color='#888'))
