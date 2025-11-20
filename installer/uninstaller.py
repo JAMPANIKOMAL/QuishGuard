@@ -2,7 +2,8 @@ import sys
 import os
 import shutil
 import winshell
-import winreg # <--- NEW
+import winreg
+import subprocess
 from PyQt6.QtWidgets import QApplication, QMessageBox
 
 APP_NAME = "QuishGuard"
@@ -16,30 +17,43 @@ def uninstall():
     
     if reply == QMessageBox.StandardButton.Yes:
         try:
-            # 1. Remove Registry Entry (So it vanishes from Settings)
+            # 1. Remove Registry Entry
             try:
                 key_path = f"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{APP_NAME}"
                 winreg.DeleteKey(winreg.HKEY_CURRENT_USER, key_path)
             except Exception:
-                pass # Key might not exist, ignore
+                pass
 
-            # 2. Remove Files
-            install_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
+            # 2. Remove Shortcuts
             desktop = winshell.desktop()
             shortcut_path = os.path.join(desktop, f"{APP_NAME}.lnk")
-            
             if os.path.exists(shortcut_path):
                 os.remove(shortcut_path)
             
-            # 3. Self-Destruct Batch Script
+            # 3. Schedule Silent Self-Destruct
+            install_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
             batch_file = os.path.join(os.environ["TEMP"], "cleanup_quishguard.bat")
+            
             with open(batch_file, "w") as f:
                 f.write("@echo off\n")
+                # Wait 2 seconds for the uninstaller EXE to close completely
                 f.write("timeout /t 2 /nobreak > NUL\n") 
+                # Force delete the folder
                 f.write(f'rmdir /s /q "{install_dir}"\n') 
+                # Delete this batch file
                 f.write('(goto) 2>nul & del "%~f0"\n')
             
-            os.startfile(batch_file)
+            # LAUNCH SILENTLY (No Terminal Window)
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = subprocess.SW_HIDE
+            
+            subprocess.Popen(
+                ['cmd', '/c', batch_file],
+                startupinfo=startupinfo,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+
             QMessageBox.information(None, "Uninstall", f"{APP_NAME} has been removed.")
             sys.exit(0)
             
