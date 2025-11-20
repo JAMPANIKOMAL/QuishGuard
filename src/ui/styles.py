@@ -1,10 +1,11 @@
 class Theme:
+    # Standard Button: Left Aligned, 20px Padding
     SIDEBAR_BTN_STYLE = """
     QPushButton {
         background-color: transparent;
         color: #888888;
         text-align: left;
-        padding-left: 20px;
+        padding-left: 20px; 
         border: none;
         border-left: 3px solid transparent;
         font-weight: bold;
@@ -26,8 +27,8 @@ class Theme:
         border-right: 1px solid #333333;
     }
     
-    #btn_menu { padding-left: 0px; text-align: center; }
-
+    /* REMOVED the specific #btn_menu alignment so it aligns left like others */
+    
     #drop_zone {
         background-color: #1E1E1E;
         border: 2px dashed #444444;
@@ -45,12 +46,11 @@ class Theme:
         padding: 10px;
     }
     
-    /* The Resize Handle (Splitter) */
     QSplitter::handle {
         background-color: #333333;
     }
     QSplitter::handle:hover {
-        background-color: #00FF00; /* Lights up green when you grab it */
+        background-color: #00FF00; 
     }
     """
 
@@ -62,8 +62,6 @@ class Theme:
         border-right: 1px solid #CCCCCC;
     }
     
-    #btn_menu { padding-left: 0px; text-align: center; }
-
     #drop_zone {
         background-color: #FFFFFF;
         border: 2px dashed #BBBBBB;
