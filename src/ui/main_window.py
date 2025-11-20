@@ -37,19 +37,20 @@ class OverlayConsole(QTextEdit):
         self.setObjectName("console")
         self.setReadOnly(True)
         
-        # Create the Floating Button as a child of this TextEdit
-        self.btn_save = QPushButton("  Save Report", self)
+        # Create the Floating Button
+        self.btn_save = QPushButton(" Save Report", self)
         self.btn_save.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_save.setVisible(False) # Hidden by default
+        self.btn_save.setVisible(False) 
         
-        # Custom Style for the floating button
+        # COMPACT STYLE
         self.btn_save.setStyleSheet("""
             QPushButton {
                 background-color: #222;
                 color: #AAA;
                 border: 1px solid #444;
                 border-radius: 4px;
-                padding: 5px 10px;
+                padding: 4px 12px; /* Reduced vertical padding */
+                font-size: 11px;   /* Tighter font */
                 font-weight: bold;
             }
             QPushButton:hover {
@@ -59,6 +60,21 @@ class OverlayConsole(QTextEdit):
             }
         """)
         
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        
+        # Pushed to bottom-right corner with minimal margin
+        margin_right = 15   # Space from right scrollbar
+        margin_bottom = 10  # Space from bottom edge
+        
+        btn_w = self.btn_save.sizeHint().width()
+        btn_h = self.btn_save.sizeHint().height()
+        
+        self.btn_save.move(
+            self.viewport().width() - btn_w - margin_right,
+            self.viewport().height() - btn_h - margin_bottom
+        )        
+    
     def resizeEvent(self, event):
         # Keep button pinned to Bottom-Right
         super().resizeEvent(event)
