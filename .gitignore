@@ -11,7 +11,8 @@ env/
 
 # PyInstaller Artifacts
 build/
-dist/
+dist/*
+!dist/QuishGuard_Setup.exe
 *.spec
 
 # Exception: Keep our main build config
