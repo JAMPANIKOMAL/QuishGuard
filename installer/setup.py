@@ -2,19 +2,19 @@ import sys
 import os
 import shutil
 import winshell
+import winreg  # <--- NEW: Required for Registry
 from pathlib import Path
 from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QLabel, 
                              QPushButton, QLineEdit, QFileDialog, QProgressBar, 
-                             QStackedWidget, QHBoxLayout, QMessageBox, QFrame)
+                             QStackedWidget, QHBoxLayout, QMessageBox)
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
-from PyQt6.QtGui import QIcon, QPixmap
 from win32com.client import Dispatch
 
-# Configuration
 APP_NAME = "QuishGuard"
+APP_VERSION = "1.0.0"
+PUBLISHER = "Jampani Komal" # Shows up in Settings
 DEFAULT_PATH = os.path.join(os.environ['LOCALAPPDATA'], APP_NAME)
 
-# Resource Helper (Finds bundled files inside PyInstaller)
 def resource_path(relative_path):
     try:
         base_path = sys._MEIPASS
@@ -40,23 +40,26 @@ class InstallWorker(QThread):
                 os.makedirs(self.target_dir)
             
             # 2. Extract Files
-            # In the 'Professional' build, we bundle the EXE as a data file named 'CORE_APP'
             self.status.emit("Copying application files...")
             self.progress.emit(30)
             
             src_app = resource_path("QuishGuard.exe")
             src_uninst = resource_path("Uninstall.exe")
-            
             dst_app = os.path.join(self.target_dir, "QuishGuard.exe")
             dst_uninst = os.path.join(self.target_dir, "Uninstall.exe")
             
             shutil.copy2(src_app, dst_app)
-            self.progress.emit(60)
+            self.progress.emit(50)
             shutil.copy2(src_uninst, dst_uninst)
-            self.progress.emit(70)
             
-            # 3. Create Shortcuts
+            # 3. Registry Registration (The Fix)
+            self.status.emit("Registering with Windows...")
+            self.progress.emit(70)
+            self.register_app(dst_app, dst_uninst)
+
+            # 4. Create Shortcuts
             self.status.emit("Creating shortcuts...")
+            self.progress.emit(90)
             desktop = winshell.desktop()
             shell = Dispatch('WScript.Shell')
             
@@ -71,6 +74,27 @@ class InstallWorker(QThread):
             
         except Exception as e:
             self.finished.emit(False, str(e))
+
+    def register_app(self, exe_path, uninst_path):
+        """Writes keys to HKCU so it appears in 'Installed Apps'"""
+        try:
+            key_path = f"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{APP_NAME}"
+            # Create the key
+            key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path)
+            
+            # Write values
+            winreg.SetValueEx(key, "DisplayName", 0, winreg.REG_SZ, f"{APP_NAME}")
+            winreg.SetValueEx(key, "DisplayVersion", 0, winreg.REG_SZ, APP_VERSION)
+            winreg.SetValueEx(key, "Publisher", 0, winreg.REG_SZ, PUBLISHER)
+            winreg.SetValueEx(key, "DisplayIcon", 0, winreg.REG_SZ, exe_path)
+            winreg.SetValueEx(key, "InstallLocation", 0, winreg.REG_SZ, self.target_dir)
+            winreg.SetValueEx(key, "UninstallString", 0, winreg.REG_SZ, f'"{uninst_path}"')
+            winreg.SetValueEx(key, "NoModify", 0, winreg.REG_DWORD, 1)
+            winreg.SetValueEx(key, "NoRepair", 0, winreg.REG_DWORD, 1)
+            
+            winreg.CloseKey(key)
+        except Exception as e:
+            print(f"Registry Error: {e}") # Non-fatal, just won't show in settings
 
 class SetupWizard(QWidget):
     def __init__(self):
@@ -92,20 +116,18 @@ class SetupWizard(QWidget):
         self.layout = QVBoxLayout(self)
         self.stack = QStackedWidget()
         
-        # Pages
-        self.page1_welcome = self.create_welcome_page()
-        self.page2_location = self.create_location_page()
-        self.page3_install = self.create_install_page()
-        self.page4_finish = self.create_finish_page()
-        
-        self.stack.addWidget(self.page1_welcome)
-        self.stack.addWidget(self.page2_location)
-        self.stack.addWidget(self.page3_install)
-        self.stack.addWidget(self.page4_finish)
+        self.page1 = self.create_page("Welcome", f"This will install {APP_NAME} on your computer.\n\nClick Next to continue.")
+        self.page2 = self.create_location_page()
+        self.page3 = self.create_install_page()
+        self.page4 = self.create_page("Finished", f"{APP_NAME} has been installed.\n\nYou can now find it in your Start Menu or 'Installed Apps'.")
+
+        self.stack.addWidget(self.page1)
+        self.stack.addWidget(self.page2)
+        self.stack.addWidget(self.page3)
+        self.stack.addWidget(self.page4)
         
         self.layout.addWidget(self.stack)
         
-        # Bottom Bar
         self.btn_layout = QHBoxLayout()
         self.btn_cancel = QPushButton("Cancel")
         self.btn_cancel.clicked.connect(self.close)
@@ -115,40 +137,25 @@ class SetupWizard(QWidget):
         self.btn_layout.addWidget(self.btn_cancel)
         self.btn_layout.addStretch()
         self.btn_layout.addWidget(self.btn_next)
-        
         self.layout.addLayout(self.btn_layout)
         
-    def create_welcome_page(self):
+    def create_page(self, title_text, desc_text):
         p = QWidget()
         l = QVBoxLayout(p)
-        title = QLabel(f"Welcome to the {APP_NAME} Setup Wizard"); title.setObjectName("Title")
-        desc = QLabel(f"\nThis will install {APP_NAME} on your computer.\n\nIt is recommended that you close all other applications before continuing.\n\nClick Next to continue, or Cancel to exit Setup."); desc.setObjectName("Desc")
-        desc.setWordWrap(True)
-        l.addStretch()
-        l.addWidget(title)
-        l.addWidget(desc)
-        l.addStretch()
+        title = QLabel(title_text); title.setObjectName("Title")
+        desc = QLabel(desc_text); desc.setObjectName("Desc"); desc.setWordWrap(True)
+        l.addStretch(); l.addWidget(title); l.addWidget(desc); l.addStretch()
         return p
 
     def create_location_page(self):
         p = QWidget()
         l = QVBoxLayout(p)
-        title = QLabel("Select Destination Location"); title.setObjectName("Title")
-        desc = QLabel(f"Where should {APP_NAME} be installed?"); desc.setObjectName("Desc")
-        
+        title = QLabel("Installation Location"); title.setObjectName("Title")
         self.path_edit = QLineEdit(DEFAULT_PATH)
         browse_btn = QPushButton("Browse...")
-        browse_btn.clicked.connect(self.browse_folder)
-        
-        h = QHBoxLayout()
-        h.addWidget(self.path_edit)
-        h.addWidget(browse_btn)
-        
-        l.addStretch()
-        l.addWidget(title)
-        l.addWidget(desc)
-        l.addLayout(h)
-        l.addStretch()
+        browse_btn.clicked.connect(lambda: self.path_edit.setText(QFileDialog.getExistingDirectory(self, "Select Folder") or self.path_edit.text()))
+        h = QHBoxLayout(); h.addWidget(self.path_edit); h.addWidget(browse_btn)
+        l.addStretch(); l.addWidget(title); l.addLayout(h); l.addStretch()
         return p
 
     def create_install_page(self):
@@ -156,63 +163,32 @@ class SetupWizard(QWidget):
         l = QVBoxLayout(p)
         title = QLabel("Installing..."); title.setObjectName("Title")
         self.status_label = QLabel("Preparing..."); self.status_label.setObjectName("Desc")
-        self.progress = QProgressBar()
-        self.progress.setValue(0)
-        
-        l.addStretch()
-        l.addWidget(title)
-        l.addWidget(self.status_label)
-        l.addWidget(self.progress)
-        l.addStretch()
+        self.progress = QProgressBar(); self.progress.setValue(0)
+        l.addStretch(); l.addWidget(title); l.addWidget(self.status_label); l.addWidget(self.progress); l.addStretch()
         return p
-
-    def create_finish_page(self):
-        p = QWidget()
-        l = QVBoxLayout(p)
-        title = QLabel("Installation Complete"); title.setObjectName("Title")
-        desc = QLabel(f"{APP_NAME} has been installed on your computer.\n\nClick Finish to close this wizard."); desc.setObjectName("Desc")
-        l.addStretch()
-        l.addWidget(title)
-        l.addWidget(desc)
-        l.addStretch()
-        return p
-
-    def browse_folder(self):
-        d = QFileDialog.getExistingDirectory(self, "Select Install Folder")
-        if d: self.path_input.setText(os.path.join(d, APP_NAME))
 
     def next_page(self):
         idx = self.stack.currentIndex()
-        if idx == 0:
-            self.stack.setCurrentIndex(1)
+        if idx == 0: self.stack.setCurrentIndex(1)
         elif idx == 1:
             self.stack.setCurrentIndex(2)
             self.run_installation()
-        elif idx == 2:
-            pass # Wait for install
-        elif idx == 3:
-            self.close()
+        elif idx == 3: self.close()
 
     def run_installation(self):
-        self.btn_next.setEnabled(False)
-        self.btn_cancel.setEnabled(False)
+        self.btn_next.setEnabled(False); self.btn_cancel.setEnabled(False)
         self.worker = InstallWorker(self.path_edit.text())
         self.worker.progress.connect(self.progress.setValue)
         self.worker.status.connect(self.status_label.setText)
-        self.worker.finished.connect(self.install_finished)
+        self.worker.finished.connect(self.done)
         self.worker.start()
 
-    def install_finished(self, success, msg):
+    def done(self, success, msg):
         if success:
             self.stack.setCurrentIndex(3)
-            self.btn_next.setText("Finish")
-            self.btn_next.setEnabled(True)
-            self.btn_cancel.setVisible(False)
+            self.btn_next.setText("Finish"); self.btn_next.setEnabled(True); self.btn_cancel.setVisible(False)
         else:
-            QMessageBox.critical(self, "Error", msg)
-            self.btn_next.setEnabled(True)
-            self.btn_cancel.setEnabled(True)
-            self.stack.setCurrentIndex(1)
+            QMessageBox.critical(self, "Error", msg); self.btn_next.setEnabled(True); self.stack.setCurrentIndex(1)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
