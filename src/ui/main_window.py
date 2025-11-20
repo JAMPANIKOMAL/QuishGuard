@@ -16,7 +16,6 @@ from src.core.scanner import ScannerEngine
 from src.core.analyzer import URLAnalyzer
 from src.utils.history import HistoryManager 
 
-# --- CUSTOM DROPPABLE LABEL ---
 class ClickableDropZone(QLabel):
     clicked = pyqtSignal() 
     def __init__(self, text, parent=None):
@@ -30,18 +29,14 @@ class ClickableDropZone(QLabel):
         if event.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit()
 
-# --- MAIN WINDOW ---
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        
         self.scanner = ScannerEngine()
         self.analyzer = URLAnalyzer()
         self.history_manager = HistoryManager()
         
-        # Track current file for reporting
         self.current_file_name = None
-        self.current_scan_time = None
         
         self.setWindowTitle("QuishGuard | Phishing Detector")
         self.resize(1100, 750)
@@ -50,7 +45,6 @@ class MainWindow(QMainWindow):
         self.is_dark_mode = True
         self.is_sidebar_expanded = True 
         
-        # Icons
         self.icon_menu = qta.icon('fa5s.bars', color='white')
         self.icon_scan = qta.icon('fa5s.qrcode', color='#888888')
         self.icon_hist = qta.icon('fa5s.history', color='#888888')
@@ -59,7 +53,6 @@ class MainWindow(QMainWindow):
         self.icon_moon = qta.icon('fa5s.moon', color='#888888')
         self.icon_sun  = qta.icon('fa5s.sun', color='#555555')
 
-        # --- LAYOUT ---
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
         self.main_layout = QHBoxLayout(self.central_widget)
@@ -87,7 +80,6 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(Theme.DARK_STYLES)
         self.log_message("[*] QuishGuard Pro Loaded.")
 
-    # --- UI SETUP ---
     def init_sidebar(self):
         self.sidebar = QFrame()
         self.sidebar.setObjectName("sidebar")
@@ -98,30 +90,22 @@ class MainWindow(QMainWindow):
         
         self.btn_menu = QPushButton(); self.btn_menu.setIcon(self.icon_menu); self.btn_menu.setIconSize(QSize(20, 20))
         self.btn_menu.clicked.connect(self.toggle_sidebar)
-        
         self.btn_scan = QPushButton("  SCANNER"); self.btn_scan.setIcon(self.icon_scan); self.btn_scan.setIconSize(QSize(20, 20))
         self.btn_scan.clicked.connect(lambda: self.switch_page(0))
-        
         self.btn_hist = QPushButton("  HISTORY"); self.btn_hist.setIcon(self.icon_hist); self.btn_hist.setIconSize(QSize(20, 20))
         self.btn_hist.clicked.connect(lambda: self.switch_page(1))
-        
         self.btn_about = QPushButton("  ABOUT"); self.btn_about.setIcon(self.icon_info); self.btn_about.setIconSize(QSize(20, 20))
         self.btn_about.clicked.connect(lambda: self.switch_page(2))
-
         self.btn_theme = QPushButton("  DARK MODE"); self.btn_theme.setIcon(self.icon_moon); self.btn_theme.setIconSize(QSize(20, 20))
         self.btn_theme.clicked.connect(self.toggle_theme)
         
         self.sidebar_layout.addWidget(self.btn_menu); self.sidebar_layout.addSpacing(20)
-        self.sidebar_layout.addWidget(self.btn_scan)
-        self.sidebar_layout.addWidget(self.btn_hist)
-        self.sidebar_layout.addWidget(self.btn_about)
-        self.sidebar_layout.addStretch()
-        self.sidebar_layout.addWidget(self.btn_theme)
+        self.sidebar_layout.addWidget(self.btn_scan); self.sidebar_layout.addWidget(self.btn_hist); self.sidebar_layout.addWidget(self.btn_about)
+        self.sidebar_layout.addStretch(); self.sidebar_layout.addWidget(self.btn_theme)
 
     def init_scanner_ui(self):
         layout = QVBoxLayout(self.page_scanner)
         layout.setContentsMargins(20, 20, 20, 20)
-        
         self.splitter = QSplitter(Qt.Orientation.Vertical)
         self.splitter.setHandleWidth(2)
         
@@ -129,30 +113,26 @@ class MainWindow(QMainWindow):
         self.drop_zone.clicked.connect(self.open_file_dialog)
         self.splitter.addWidget(self.drop_zone)
         
-        # Console Container
         console_widget = QWidget()
         console_layout = QVBoxLayout(console_widget)
         console_layout.setContentsMargins(0, 0, 0, 0)
         
-        # Progress Bar
         self.progress_bar = QProgressBar()
         self.progress_bar.setFixedHeight(4)
         self.progress_bar.setTextVisible(False)
         self.progress_bar.setStyleSheet("QProgressBar { border: none; background: #222; } QProgressBar::chunk { background: #00FF00; }")
         self.progress_bar.setVisible(False)
         
-        # Text Area
         self.console = QTextEdit()
         self.console.setObjectName("console")
         self.console.setReadOnly(True)
         
-        # Save Report Button (Aligned Right, integrated look)
+        # Save Button - Initially HIDDEN (setVisible False)
         self.btn_save_report = QPushButton(" Save Report to Disk")
         self.btn_save_report.setIcon(self.icon_save)
         self.btn_save_report.setFixedSize(160, 30)
         self.btn_save_report.clicked.connect(self.save_report)
-        # Only show button when scan is done (optional, but good for focus)
-        self.btn_save_report.setEnabled(False) 
+        self.btn_save_report.setVisible(False) # <--- HIDDEN
         
         console_layout.addWidget(self.progress_bar)
         console_layout.addWidget(self.console)
@@ -165,12 +145,11 @@ class MainWindow(QMainWindow):
     def init_history_ui(self):
         layout = QVBoxLayout(self.page_history)
         layout.setContentsMargins(20, 20, 20, 20)
-        title = QLabel("SCAN HISTORY")
-        title.setStyleSheet("font-size: 24px; font-weight: bold; color: #888;")
+        title = QLabel("SCAN HISTORY"); title.setStyleSheet("font-size: 24px; font-weight: bold; color: #888;")
         layout.addWidget(title)
         self.table = QTableWidget()
-        self.table.setColumnCount(4) 
-        self.table.setHorizontalHeaderLabels(["Time", "File", "Type", "Content"])
+        self.table.setColumnCount(4)
+        self.table.setHorizontalHeaderLabels(["Time", "File", "Verdict", "Content"])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.setStyleSheet("background-color: #1E1E1E; color: #CCC; border: 1px solid #333; gridline-color: #333;")
         self.table.verticalHeader().setVisible(False)
@@ -189,7 +168,6 @@ class MainWindow(QMainWindow):
         desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title); layout.addWidget(desc)
 
-    # --- LOGIC ---
     def switch_page(self, index):
         self.stack.setCurrentIndex(index)
         if index == 1: self.load_history_data()
@@ -200,7 +178,14 @@ class MainWindow(QMainWindow):
         for row, entry in enumerate(data):
             self.table.setItem(row, 0, QTableWidgetItem(entry.get("timestamp", "")))
             self.table.setItem(row, 1, QTableWidgetItem(entry.get("file", "")))
-            self.table.setItem(row, 2, QTableWidgetItem(entry.get("type", "")))
+            
+            # Color code the Verdict column
+            verdict = entry.get("type", "")
+            item = QTableWidgetItem(verdict)
+            if "HIGH RISK" in verdict: item.setForeground(Qt.GlobalColor.red)
+            elif "SAFE" in verdict: item.setForeground(Qt.GlobalColor.green)
+            self.table.setItem(row, 2, item)
+            
             self.table.setItem(row, 3, QTableWidgetItem(entry.get("content", "")))
 
     def log_message(self, message):
@@ -211,47 +196,29 @@ class MainWindow(QMainWindow):
         self.progress_bar.setValue(value); QApplication.processEvents()
 
     def save_report(self):
-        """
-        Generates a Professional Forensic Report.
-        Auto-names the file with Date + Filename.
-        """
-        if not self.current_file_name:
-            return
-
-        # 1. Auto-Generate Filename
-        # Clean filename to remove slashes/spaces
+        if not self.current_file_name: return
         safe_name = os.path.basename(self.current_file_name).replace(" ", "_")
         timestamp_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         default_name = f"QuishGuard_Report_{safe_name}_{timestamp_str}.txt"
-        
-        # 2. Get Save Path
         path, _ = QFileDialog.getSaveFileName(self, "Save Forensic Report", default_name, "Text Files (*.txt)")
-        
         if path:
-            # 3. Construct Professional Content
-            report_content = []
-            report_content.append("======================================================================")
-            report_content.append("                     QUISHGUARD FORENSIC REPORT                       ")
-            report_content.append("======================================================================")
-            report_content.append(f"Date Generated : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-            report_content.append(f"Target File    : {self.current_file_name}")
-            report_content.append(f"Analyst Tool   : QuishGuard v1.0")
-            report_content.append("======================================================================\n")
-            
-            report_content.append("[ ANALYSIS LOGS ]")
-            report_content.append("-" * 60)
-            # Grab everything from the console window
-            report_content.append(self.console.toPlainText())
-            
-            report_content.append("\n" + "=" * 70)
-            report_content.append("END OF REPORT | CONFIDENTIAL | DO NOT DISTRIBUTE IF MALICIOUS")
-            report_content.append("=" * 70)
-
-            # 4. Write to disk
             try:
                 with open(path, "w", encoding="utf-8") as f:
-                    f.write("\n".join(report_content))
-                self.log_message(f"\n[+] Report successfully saved to:\n    {path}")
+                    # WRITE PROFESSIONAL REPORT
+                    f.write("======================================================================\n")
+                    f.write("                     QUISHGUARD FORENSIC REPORT                       \n")
+                    f.write("======================================================================\n")
+                    f.write(f"Date Generated : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                    f.write(f"Target File    : {self.current_file_name}\n")
+                    f.write(f"Analyst Tool   : QuishGuard v1.0\n")
+                    f.write("======================================================================\n\n")
+                    f.write("[ ANALYSIS LOGS ]\n")
+                    f.write("-" * 60 + "\n")
+                    f.write(self.console.toPlainText())
+                    f.write("\n\n" + "=" * 70 + "\n")
+                    f.write("END OF REPORT | CONFIDENTIAL | DO NOT DISTRIBUTE IF MALICIOUS\n")
+                    f.write("=" * 70 + "\n")
+                self.log_message(f"\n[+] Report successfully saved to disk.")
             except Exception as e:
                 self.log_message(f"\n[!] Error saving report: {str(e)}")
 
@@ -259,14 +226,11 @@ class MainWindow(QMainWindow):
         self.stack.setCurrentIndex(0)
         if not file_path or not os.path.exists(file_path): return
 
-        # --- CLEAR TERMINAL ON NEW SCAN (YES!) ---
-        self.console.clear() 
-        self.btn_save_report.setEnabled(False) # Disable save until done
-
-        filename = os.path.basename(file_path)
-        self.current_file_name = filename # Store for report naming
-        self.current_scan_time = datetime.now()
+        self.console.clear() # AUTO-CLEAR
+        self.btn_save_report.setVisible(False) # HIDE BUTTON
         
+        filename = os.path.basename(file_path)
+        self.current_file_name = filename
         self.log_message(f"[>] Processing: {filename}")
         self.drop_zone.setText(f"ANALYZING:\n{filename}\n\n[ Please Wait... ]")
         self.drop_zone.setStyleSheet("color: #00FF00; border-color: #00FF00;") 
@@ -279,7 +243,7 @@ class MainWindow(QMainWindow):
         if not found_qrs:
             self.log_message("[-] No QR Code found.")
             self.drop_zone.setStyleSheet(""); self.drop_zone.setText("NO QR FOUND\n\n[ Drop or Click or Paste to Scan Another ]")
-            self.btn_save_report.setEnabled(True) # Enable save even if empty (to log that it was clean)
+            self.btn_save_report.setVisible(True)
             return
         
         self.log_message(f"[*] Found {len(found_qrs)} QR Code(s). Analyzing...")
@@ -291,24 +255,45 @@ class MainWindow(QMainWindow):
             self.log_message(f"\n--- RESULT #{i+1} ---")
             analysis = self.analyzer.analyze(raw_data)
             
-            content_preview = analysis.get('final', analysis.get('original', 'N/A'))
-            self.history_manager.add_entry(filename, analysis['type'], content_preview)
-
-            if analysis["status"] == "error":
-                self.log_message(f"[!] Analysis Failed: {analysis['message']}")
-            elif analysis["type"] == "Text":
-                self.log_message(f"[i] Type: Plain Text"); self.log_message(f"[>] Content: {analysis['original']}")
+            # DISPLAY VERDICT IN CONSOLE
+            verdict = analysis.get("verdict", "UNKNOWN")
+            score = analysis.get("score", 0)
+            
+            if verdict == "HIGH RISK":
+                self.log_message(f"!!! VERDICT: HIGH RISK (Score: {score}) !!!")
+                self.console.setTextColor(Qt.GlobalColor.red) # Highlight Red
+            elif verdict == "SUSPICIOUS":
+                self.log_message(f"(!) VERDICT: SUSPICIOUS (Score: {score})")
+                self.console.setTextColor(Qt.GlobalColor.yellow)
             else:
-                self.log_message(f"[i] Type: URL"); self.log_message(f"[>] Destination: {analysis['final']}")
+                self.log_message(f"[+] VERDICT: SAFE")
+                self.console.setTextColor(Qt.GlobalColor.green)
+
+            # Display Flags
+            if "flags" in analysis:
+                for flag in analysis["flags"]:
+                     self.log_message(f"    [x] FLAG: {flag}")
+            
+            # Reset Color
+            self.console.setTextColor(Qt.GlobalColor.green) 
+
+            content_preview = analysis.get('final', analysis.get('original', 'N/A'))
+            # Save Verdict to History
+            self.history_manager.add_entry(filename, verdict, content_preview)
+
+            if analysis["type"] == "URL":
+                self.log_message(f"[>] Destination: {analysis['final']}")
                 if len(analysis["chain"]) > 1:
                     self.log_message("[~] Redirection Chain:")
                     for j, hop in enumerate(analysis["chain"]):
                         self.log_message(f"    {j+1}. {defang(hop)}")
+            else:
+                self.log_message(f"[>] Content: {analysis['original']}")
 
         self.log_message("\n[*] Batch Analysis Complete.")
-        self.btn_save_report.setEnabled(True) # Enable save button
+        self.btn_save_report.setVisible(True) # SHOW BUTTON NOW
 
-    # --- INPUTS & ANIMATIONS ---
+    # --- INPUTS ---
     def open_file_dialog(self):
         file_path, _ = QFileDialog.getOpenFileName(self, "Select Image", "", "Files (*.png *.jpg *.jpeg *.pdf)")
         if file_path: self.process_file(file_path)
@@ -325,7 +310,6 @@ class MainWindow(QMainWindow):
             if md.hasImage():
                 img = cb.image(); path = os.path.abspath("temp_clipboard_scan.png"); img.save(path); self.process_file(path)
             elif md.hasUrls(): self.process_file(md.urls()[0].toLocalFile())
-
     def toggle_sidebar(self):
         width = self.sidebar.width(); target = 60 if width == 150 else 150 
         self.anim = QPropertyAnimation(self.sidebar, b"minimumWidth"); self.anim.setDuration(300); self.anim.setStartValue(width); self.anim.setEndValue(target); self.anim.setEasingCurve(QEasingCurve.Type.InOutQuart); self.anim.start()
@@ -335,7 +319,6 @@ class MainWindow(QMainWindow):
         else:
             self.btn_menu.setStyleSheet(""); self.btn_scan.setStyleSheet(""); self.btn_hist.setStyleSheet(""); self.btn_about.setStyleSheet(""); self.btn_theme.setStyleSheet("")
             self.btn_scan.setText("  SCANNER"); self.btn_hist.setText("  HISTORY"); self.btn_about.setText("  ABOUT"); self.btn_theme.setText("  DARK MODE" if self.is_dark_mode else "  LIGHT MODE"); self.is_sidebar_expanded = True
-
     def toggle_theme(self):
         if self.is_dark_mode:
             self.setStyleSheet(Theme.LIGHT_STYLES); self.is_dark_mode = False
