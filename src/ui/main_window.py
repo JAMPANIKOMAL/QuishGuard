@@ -6,9 +6,12 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
 from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve, pyqtSignal
 from PyQt6.QtGui import QDragEnterEvent, QDropEvent, QKeySequence
 
+# --- CRITICAL FIX: Added this import ---
+from defang import defang 
+
 from src.ui.styles import Theme
 from src.core.scanner import ScannerEngine
-from src.core.analyzer import URLAnalyzer # <--- NEW IMPORT
+from src.core.analyzer import URLAnalyzer 
 
 # --- CUSTOM WIDGET (Unchanged) ---
 class ClickableDropZone(QLabel):
@@ -30,7 +33,7 @@ class MainWindow(QMainWindow):
         
         # Initialize Engines
         self.scanner = ScannerEngine()
-        self.analyzer = URLAnalyzer() # <--- NEW INIT
+        self.analyzer = URLAnalyzer() 
         
         # Window Setup
         self.setWindowTitle("QuishGuard | Phishing Detector")
@@ -41,7 +44,7 @@ class MainWindow(QMainWindow):
         self.is_dark_mode = True
         self.is_sidebar_expanded = True
         
-        # --- LAYOUT (Same as before) ---
+        # --- LAYOUT ---
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
         self.main_layout = QHBoxLayout(self.central_widget)
@@ -113,7 +116,7 @@ class MainWindow(QMainWindow):
         else:
             self.log_message("[-] Clipboard is empty or invalid.")
 
-    # --- CORE LOGIC (UPDATED) ---
+    # --- CORE LOGIC ---
     def process_file(self, file_path):
         if not file_path or not os.path.exists(file_path):
              return
