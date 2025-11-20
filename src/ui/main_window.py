@@ -179,6 +179,8 @@ class MainWindow(QMainWindow):
     def toggle_sidebar(self):
         width = self.sidebar.width()
         target_width = 60 if width == 220 else 220
+        
+        # Animation
         self.animation = QPropertyAnimation(self.sidebar, b"minimumWidth")
         self.animation.setDuration(300)
         self.animation.setStartValue(width)
@@ -186,24 +188,32 @@ class MainWindow(QMainWindow):
         self.animation.setEasingCurve(QEasingCurve.Type.InOutQuart)
         self.animation.start()
         
-        self.anim_max = QPropertyAnimation(self.sidebar, b"maximumWidth")
-        self.anim_max.setDuration(300)
-        self.anim_max.setStartValue(width)
-        self.anim_max.setEndValue(target_width)
-        self.anim_max.setEasingCurve(QEasingCurve.Type.InOutQuart)
-        self.anim_max.start()
-        
+        # Update Text Visibility
         if target_width == 60:
-            self.btn_scan.setText("")
-            self.btn_history.setText("")
-            self.btn_theme.setText(" ☾")
+            # Collapsed Mode: Show minimal icons/text
+            self.btn_scan.setText("S") # S for Scanner
+            self.btn_history.setText("H") # H for History
+            self.btn_theme.setText("☾" if self.is_dark_mode else "☀")
+            
+            # Center align for collapsed state
+            self.btn_scan.setStyleSheet("text-align: center; padding-left: 0;")
+            self.btn_history.setStyleSheet("text-align: center; padding-left: 0;")
+            self.btn_theme.setStyleSheet("text-align: center; padding-left: 0;")
+            
             self.is_sidebar_expanded = False
         else:
-            self.btn_scan.setText(" SCANNER")
-            self.btn_history.setText(" HISTORY")
+            # Expanded Mode: Show full text
+            self.btn_scan.setText("  SCANNER")
+            self.btn_history.setText("  HISTORY")
             icon = " ☾" if self.is_dark_mode else " ☀"
             text = "  DARK MODE" if self.is_dark_mode else "  LIGHT MODE"
             self.btn_theme.setText(icon + text)
+            
+            # Reset alignment to Left
+            self.btn_scan.setStyleSheet("") # Reverts to styles.py default
+            self.btn_history.setStyleSheet("")
+            self.btn_theme.setStyleSheet("")
+            
             self.is_sidebar_expanded = True
 
     def toggle_theme(self):
