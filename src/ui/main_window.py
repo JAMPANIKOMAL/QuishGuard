@@ -1,13 +1,14 @@
 import os
 import sys
-import shutil # specific for temporary file handling
+import shutil
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                              QPushButton, QLabel, QFrame, QTextEdit, QFileDialog, QApplication)
-from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve, pyqtSignal, QUrl
-from PyQt6.QtGui import QDragEnterEvent, QDropEvent, QPixmap, QKeySequence, QShortcut
+from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve, pyqtSignal
+from PyQt6.QtGui import QDragEnterEvent, QDropEvent, QKeySequence
 
 from src.ui.styles import Theme
 from src.core.scanner import ScannerEngine
+from src.core.analyzer import URLAnalyzer # <--- NEW IMPORT
 
 # --- CUSTOM WIDGET (Unchanged) ---
 class ClickableDropZone(QLabel):
@@ -27,7 +28,9 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         
+        # Initialize Engines
         self.scanner = ScannerEngine()
+        self.analyzer = URLAnalyzer() # <--- NEW INIT
         
         # Window Setup
         self.setWindowTitle("QuishGuard | Phishing Detector")
@@ -38,18 +41,16 @@ class MainWindow(QMainWindow):
         self.is_dark_mode = True
         self.is_sidebar_expanded = True
         
-        # Main Layout
+        # --- LAYOUT (Same as before) ---
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
         self.main_layout = QHBoxLayout(self.central_widget)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
         self.main_layout.setSpacing(0)
         
-        # --- SIDEBAR ---
         self.sidebar = QFrame()
         self.sidebar.setObjectName("sidebar")
         self.sidebar.setFixedWidth(220)
-        
         self.sidebar_layout = QVBoxLayout(self.sidebar)
         self.sidebar_layout.setContentsMargins(0, 10, 0, 20)
         self.sidebar_layout.setSpacing(10)
@@ -57,7 +58,6 @@ class MainWindow(QMainWindow):
         self.btn_menu = QPushButton(" ≡")
         self.btn_menu.setObjectName("btn_menu")
         self.btn_menu.clicked.connect(self.toggle_sidebar)
-        
         self.btn_scan = QPushButton(" SCANNER")
         self.btn_history = QPushButton(" HISTORY")
         self.btn_theme = QPushButton(" ☾  DARK MODE")
@@ -69,7 +69,6 @@ class MainWindow(QMainWindow):
         self.sidebar_layout.addStretch()
         self.sidebar_layout.addWidget(self.btn_theme)
         
-        # --- CONTENT AREA ---
         self.content_area = QWidget()
         self.content_layout = QVBoxLayout(self.content_area)
         self.content_layout.setContentsMargins(20, 20, 20, 20)
@@ -82,23 +81,19 @@ class MainWindow(QMainWindow):
         self.console.setReadOnly(True)
         self.console.setFixedHeight(150)
         self.log_message("[*] QuishGuard System Initialized...")
-        self.log_message("[*] Ready. Paste image (Ctrl+V), Drag & Drop, or Click.")
+        self.log_message("[*] Modules Loaded: Scanner, Analyzer.")
         
         self.content_layout.addWidget(self.drop_zone, stretch=2)
         self.content_layout.addWidget(self.console, stretch=1)
-        
         self.main_layout.addWidget(self.sidebar)
         self.main_layout.addWidget(self.content_area)
-        
         self.setStyleSheet(Theme.DARK_STYLES)
 
-    # --- LOGGING ---
     def log_message(self, message):
         self.console.append(message)
 
-    # --- CLIPBOARD SUPPORT (New) ---
+    # --- CLIPBOARD ---
     def keyPressEvent(self, event):
-        """Detects Ctrl+V to paste images"""
         if event.modifiers() == Qt.KeyboardModifier.ControlModifier and event.key() == Qt.Key.Key_V:
             self.handle_paste()
         else:
@@ -107,54 +102,62 @@ class MainWindow(QMainWindow):
     def handle_paste(self):
         clipboard = QApplication.clipboard()
         mime_data = clipboard.mimeData()
-
         if mime_data.hasImage():
             self.log_message("\n[>] Clipboard image detected...")
-            # Save clipboard image to a temporary file so the scanner can read it
             image = clipboard.image()
             temp_path = os.path.abspath("temp_clipboard_scan.png")
             image.save(temp_path)
             self.process_file(temp_path)
         elif mime_data.hasUrls():
-            # If they copied a file file from Explorer
-            url = mime_data.urls()[0]
-            self.process_file(url.toLocalFile())
+            self.process_file(mime_data.urls()[0].toLocalFile())
         else:
-            self.log_message("[-] Clipboard is empty or does not contain an image.")
+            self.log_message("[-] Clipboard is empty or invalid.")
 
-    # --- LOGIC ---
+    # --- CORE LOGIC (UPDATED) ---
     def process_file(self, file_path):
-        if not file_path:
-            return
-
-        file_path = os.path.normpath(file_path) # Fix slashes
-        
-        # Filter out bad paths (like the "url" error you saw)
-        if not os.path.exists(file_path):
-             self.log_message(f"[!] Error: System cannot find path: {file_path}")
+        if not file_path or not os.path.exists(file_path):
              return
 
-        self.log_message(f"\n[>] Analyzing: {os.path.basename(file_path)}")
+        self.log_message(f"\n[>] Processing: {os.path.basename(file_path)}")
         
-        result = self.scanner.extract_qr(file_path)
+        # 1. Extract QR
+        raw_data = self.scanner.extract_qr(file_path)
         
-        if result:
-            if result.startswith("[!]"): 
-                self.log_message(result)
-            else:
-                self.log_message(f"[+] QR DETECTED: {result}")
-                self.log_message("[*] Analysis required for this URL.")
-        else:
+        if not raw_data:
             self.log_message("[-] No QR Code found.")
+            return
+        
+        if raw_data.startswith("[!]"):
+            self.log_message(raw_data)
+            return
+
+        # 2. Analyze Data
+        self.log_message(f"[+] RAW DATA: {raw_data}")
+        self.log_message("[*] Analyzing content...")
+        
+        analysis = self.analyzer.analyze(raw_data)
+        
+        if analysis["status"] == "error":
+            self.log_message(f"[!] Analysis Failed: {analysis['message']}")
+        elif analysis["type"] == "Text":
+             self.log_message(f"[i] Type: Plain Text (Safe)")
+        else:
+            # It's a URL
+            self.log_message(f"[i] Type: URL")
+            self.log_message(f"[>] Destination: {analysis['final']}")
+            self.log_message(f"[>] Domain: {analysis['domain']}")
+            
+            # Show Chain if redirected
+            if len(analysis["chain"]) > 1:
+                self.log_message("\n[~] REDIRECTION CHAIN DETECTED:")
+                for i, hop in enumerate(analysis["chain"]):
+                    self.log_message(f"    {i+1}. {defang(hop)}")
 
     def open_file_dialog(self):
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, "Select Image", "", "Images (*.png *.jpg *.jpeg *.bmp *.pdf)"
-        )
+        file_path, _ = QFileDialog.getOpenFileName(self, "Select Image", "", "Images (*.png *.jpg *.jpeg *.pdf)")
         if file_path:
             self.process_file(file_path)
 
-    # --- DRAG AND DROP (Refined) ---
     def dragEnterEvent(self, event: QDragEnterEvent):
         if event.mimeData().hasUrls():
             event.accept()
@@ -164,12 +167,10 @@ class MainWindow(QMainWindow):
     def dropEvent(self, event: QDropEvent):
         for url in event.mimeData().urls():
             file_path = url.toLocalFile()
-            
-            # Check if valid path
             if file_path and os.path.exists(file_path):
                 self.process_file(file_path)
             else:
-                self.log_message(f"[!] drop ignored: Invalid file source. Try clicking to upload.")
+                self.log_message(f"[!] drop ignored: Invalid file source.")
 
     # --- ANIMATIONS (Unchanged) ---
     def toggle_sidebar(self):
