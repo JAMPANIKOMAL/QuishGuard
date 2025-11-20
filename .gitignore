@@ -1,0 +1,17 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual Environment (CRITICAL: Never upload this)
+venv/
+env/
+.env
+
+# VS Code settings (Personal preferences shouldn't be shared)
+.vscode/
+
+# System files
+.DS_Store
+Thumbs.db

@@ -1,0 +1,7 @@
+PyQt6==6.7.1          # The UI Framework
+opencv-python==4.10.0.84 # Image Pre-processing
+pyzbar==0.1.9         # QR Code Decoding
+PyMuPDF==1.24.13      # PDF Rendering
+requests==2.32.3      # Network Analysis
+beautifulsoup4==4.12.3 # HTML Parsing
+defang==0.5.3         # Safe URL display
