@@ -4,14 +4,21 @@ __pycache__/
 *.pyo
 *.pyd
 
-# Virtual Environment (CRITICAL: Never upload this)
+# Virtual Environment
 venv/
 env/
 .env
 
-# VS Code settings (Personal preferences shouldn't be shared)
+# PyInstaller Artifacts
+build/
+dist/
+*.spec
+
+# Exception: Keep our main build config
+!build_config.spec
+
+# VS Code settings
 .vscode/
 
-# System files
-.DS_Store
-Thumbs.db
+scan_history.json
+
