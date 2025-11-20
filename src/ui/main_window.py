@@ -1,19 +1,20 @@
 import os
 import sys
-import shutil
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-                             QPushButton, QLabel, QFrame, QTextEdit, QFileDialog, QApplication)
-from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve, pyqtSignal
-from PyQt6.QtGui import QDragEnterEvent, QDropEvent, QKeySequence
+                             QPushButton, QLabel, QFrame, QTextEdit, QFileDialog, 
+                             QApplication, QSplitter) # Added QSplitter
+from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve, pyqtSignal, QSize
+from PyQt6.QtGui import QDragEnterEvent, QDropEvent, QAction
 
-# --- CRITICAL FIX: Added this import ---
+# --- NEW IMPORT: Professional Icons ---
+import qtawesome as qta 
 from defang import defang 
 
 from src.ui.styles import Theme
 from src.core.scanner import ScannerEngine
 from src.core.analyzer import URLAnalyzer 
 
-# --- CUSTOM WIDGET (Unchanged) ---
+# --- CUSTOM WIDGET ---
 class ClickableDropZone(QLabel):
     clicked = pyqtSignal() 
     def __init__(self, text, parent=None):
@@ -21,6 +22,7 @@ class ClickableDropZone(QLabel):
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setObjectName("drop_zone")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setWordWrap(True) # Allow text to wrap if filename is long
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -31,19 +33,26 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         
-        # Initialize Engines
         self.scanner = ScannerEngine()
         self.analyzer = URLAnalyzer() 
         
         # Window Setup
         self.setWindowTitle("QuishGuard | Phishing Detector")
-        self.resize(1000, 700)
+        self.resize(1100, 750)
         self.setAcceptDrops(True) 
         
-        # State
         self.is_dark_mode = True
         self.is_sidebar_expanded = True
         
+        # --- ICONS SETUP (FontAwesome) ---
+        # We create icons with specific colors for Dark Mode
+        self.icon_menu = qta.icon('fa5s.bars', color='white')
+        self.icon_scan = qta.icon('fa5s.qrcode', color='#888888')
+        self.icon_hist = qta.icon('fa5s.history', color='#888888')
+        self.icon_moon = qta.icon('fa5s.moon', color='#888888')
+        self.icon_sun  = qta.icon('fa5s.sun', color='#555555')
+        self.icon_file = qta.icon('fa5s.file-alt', color='white') # For file drop
+
         # --- LAYOUT ---
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
@@ -51,113 +60,122 @@ class MainWindow(QMainWindow):
         self.main_layout.setContentsMargins(0, 0, 0, 0)
         self.main_layout.setSpacing(0)
         
+        # 1. SIDEBAR
         self.sidebar = QFrame()
         self.sidebar.setObjectName("sidebar")
         self.sidebar.setFixedWidth(220)
         self.sidebar_layout = QVBoxLayout(self.sidebar)
         self.sidebar_layout.setContentsMargins(0, 10, 0, 20)
-        self.sidebar_layout.setSpacing(10)
+        self.sidebar_layout.setSpacing(5)
         
-        self.btn_menu = QPushButton(" ≡")
+        # Menu Button
+        self.btn_menu = QPushButton()
+        self.btn_menu.setIcon(self.icon_menu)
+        self.btn_menu.setIconSize(QSize(24, 24))
         self.btn_menu.setObjectName("btn_menu")
         self.btn_menu.clicked.connect(self.toggle_sidebar)
-        self.btn_scan = QPushButton(" SCANNER")
-        self.btn_history = QPushButton(" HISTORY")
-        self.btn_theme = QPushButton(" ☾  DARK MODE")
+        
+        # Nav Buttons
+        self.btn_scan = QPushButton("  SCANNER")
+        self.btn_scan.setIcon(self.icon_scan)
+        self.btn_scan.setIconSize(QSize(20, 20))
+        
+        self.btn_history = QPushButton("  HISTORY")
+        self.btn_history.setIcon(self.icon_hist)
+        self.btn_history.setIconSize(QSize(20, 20))
+        
+        # Theme Button
+        self.btn_theme = QPushButton("  DARK MODE")
+        self.btn_theme.setIcon(self.icon_moon)
+        self.btn_theme.setIconSize(QSize(20, 20))
         self.btn_theme.clicked.connect(self.toggle_theme)
         
         self.sidebar_layout.addWidget(self.btn_menu)
+        self.sidebar_layout.addSpacing(20) # Space after menu
         self.sidebar_layout.addWidget(self.btn_scan)
         self.sidebar_layout.addWidget(self.btn_history)
         self.sidebar_layout.addStretch()
         self.sidebar_layout.addWidget(self.btn_theme)
         
+        # 2. CONTENT AREA (Using QSplitter for Resizing)
         self.content_area = QWidget()
         self.content_layout = QVBoxLayout(self.content_area)
         self.content_layout.setContentsMargins(20, 20, 20, 20)
         
+        # The Splitter holds the Drop Zone (Top) and Console (Bottom)
+        self.splitter = QSplitter(Qt.Orientation.Vertical)
+        self.splitter.setHandleWidth(2) # Thin divider
+        
+        # Top: Drop Zone
         self.drop_zone = ClickableDropZone("CLICK TO UPLOAD\n\n[ OR DRAG FILE HERE ]\n[ OR PASTE (CTRL+V) ]")
         self.drop_zone.clicked.connect(self.open_file_dialog)
+        self.splitter.addWidget(self.drop_zone)
         
+        # Bottom: Console
         self.console = QTextEdit()
         self.console.setObjectName("console")
         self.console.setReadOnly(True)
-        self.console.setFixedHeight(150)
-        self.log_message("[*] QuishGuard System Initialized...")
-        self.log_message("[*] Modules Loaded: Scanner, Analyzer.")
+        self.console.setMinimumHeight(100) # Don't let it vanish
+        self.splitter.addWidget(self.console)
         
-        self.content_layout.addWidget(self.drop_zone, stretch=2)
-        self.content_layout.addWidget(self.console, stretch=1)
+        # Set initial ratio (2/3 Drop Zone, 1/3 Console)
+        self.splitter.setSizes([500, 200])
+        
+        self.content_layout.addWidget(self.splitter)
+        
         self.main_layout.addWidget(self.sidebar)
         self.main_layout.addWidget(self.content_area)
         self.setStyleSheet(Theme.DARK_STYLES)
+        
+        self.log_message("[*] QuishGuard Pro Loaded.")
+        self.log_message("[*] Icons: qtawesome loaded.")
 
     def log_message(self, message):
         self.console.append(message)
 
-    # --- CLIPBOARD ---
-    def keyPressEvent(self, event):
-        if event.modifiers() == Qt.KeyboardModifier.ControlModifier and event.key() == Qt.Key.Key_V:
-            self.handle_paste()
-        else:
-            super().keyPressEvent(event)
-
-    def handle_paste(self):
-        clipboard = QApplication.clipboard()
-        mime_data = clipboard.mimeData()
-        if mime_data.hasImage():
-            self.log_message("\n[>] Clipboard image detected...")
-            image = clipboard.image()
-            temp_path = os.path.abspath("temp_clipboard_scan.png")
-            image.save(temp_path)
-            self.process_file(temp_path)
-        elif mime_data.hasUrls():
-            self.process_file(mime_data.urls()[0].toLocalFile())
-        else:
-            self.log_message("[-] Clipboard is empty or invalid.")
-
-    # --- CORE LOGIC ---
+    # --- LOGIC ---
     def process_file(self, file_path):
         if not file_path or not os.path.exists(file_path):
              return
 
-        self.log_message(f"\n[>] Processing: {os.path.basename(file_path)}")
+        filename = os.path.basename(file_path)
+        self.log_message(f"\n[>] Processing: {filename}")
         
-        # 1. Extract QR
+        # DYNAMIC UI UPDATE: Change the Drop Zone text
+        self.drop_zone.setText(f"ANALYZING:\n{filename}\n\n[ Drop new file to reset ]")
+        self.drop_zone.setStyleSheet("color: #00FF00; border-color: #00FF00;") # Cyber Green border
+        
+        # 1. Extract
         raw_data = self.scanner.extract_qr(file_path)
         
         if not raw_data:
             self.log_message("[-] No QR Code found.")
+            self.drop_zone.setStyleSheet("") # Reset style
+            self.drop_zone.setText("NO QR FOUND\n\n[ Try Another File ]")
             return
         
         if raw_data.startswith("[!]"):
             self.log_message(raw_data)
             return
 
-        # 2. Analyze Data
-        self.log_message(f"[+] RAW DATA: {raw_data}")
-        self.log_message("[*] Analyzing content...")
-        
+        # 2. Analyze
         analysis = self.analyzer.analyze(raw_data)
         
         if analysis["status"] == "error":
             self.log_message(f"[!] Analysis Failed: {analysis['message']}")
         elif analysis["type"] == "Text":
-             self.log_message(f"[i] Type: Plain Text (Safe)")
+             self.log_message(f"[i] Type: Plain Text: {analysis['original']}")
         else:
-            # It's a URL
             self.log_message(f"[i] Type: URL")
             self.log_message(f"[>] Destination: {analysis['final']}")
-            self.log_message(f"[>] Domain: {analysis['domain']}")
-            
-            # Show Chain if redirected
             if len(analysis["chain"]) > 1:
-                self.log_message("\n[~] REDIRECTION CHAIN DETECTED:")
+                self.log_message("[~] Redirection Chain:")
                 for i, hop in enumerate(analysis["chain"]):
                     self.log_message(f"    {i+1}. {defang(hop)}")
 
+    # --- INPUT HANDLERS (Unchanged) ---
     def open_file_dialog(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "Select Image", "", "Images (*.png *.jpg *.jpeg *.pdf)")
+        file_path, _ = QFileDialog.getOpenFileName(self, "Select Image", "", "Files (*.png *.jpg *.jpeg *.pdf)")
         if file_path:
             self.process_file(file_path)
 
@@ -172,15 +190,24 @@ class MainWindow(QMainWindow):
             file_path = url.toLocalFile()
             if file_path and os.path.exists(file_path):
                 self.process_file(file_path)
-            else:
-                self.log_message(f"[!] drop ignored: Invalid file source.")
 
-    # --- ANIMATIONS (Unchanged) ---
+    def keyPressEvent(self, event):
+        if event.modifiers() == Qt.KeyboardModifier.ControlModifier and event.key() == Qt.Key.Key_V:
+            clipboard = QApplication.clipboard()
+            mime_data = clipboard.mimeData()
+            if mime_data.hasImage():
+                image = clipboard.image()
+                temp_path = os.path.abspath("temp_clipboard_scan.png")
+                image.save(temp_path)
+                self.process_file(temp_path)
+            elif mime_data.hasUrls():
+                self.process_file(mime_data.urls()[0].toLocalFile())
+
+    # --- UI ANIMATIONS (Revised for Icons) ---
     def toggle_sidebar(self):
         width = self.sidebar.width()
         target_width = 60 if width == 220 else 220
         
-        # Animation
         self.animation = QPropertyAnimation(self.sidebar, b"minimumWidth")
         self.animation.setDuration(300)
         self.animation.setStartValue(width)
@@ -188,40 +215,43 @@ class MainWindow(QMainWindow):
         self.animation.setEasingCurve(QEasingCurve.Type.InOutQuart)
         self.animation.start()
         
-        # Update Text Visibility
+        self.anim_max = QPropertyAnimation(self.sidebar, b"maximumWidth")
+        self.anim_max.setDuration(300)
+        self.anim_max.setStartValue(width)
+        self.anim_max.setEndValue(target_width)
+        self.anim_max.setEasingCurve(QEasingCurve.Type.InOutQuart)
+        self.anim_max.start()
+        
         if target_width == 60:
-            # Collapsed Mode: Show minimal icons/text
-            self.btn_scan.setText("S") # S for Scanner
-            self.btn_history.setText("H") # H for History
-            self.btn_theme.setText("☾" if self.is_dark_mode else "☀")
-            
-            # Center align for collapsed state
-            self.btn_scan.setStyleSheet("text-align: center; padding-left: 0;")
-            self.btn_history.setStyleSheet("text-align: center; padding-left: 0;")
-            self.btn_theme.setStyleSheet("text-align: center; padding-left: 0;")
-            
+            # Collapsed: Text Empty, Icons Centered
+            self.btn_scan.setText("")
+            self.btn_history.setText("")
+            self.btn_theme.setText("")
             self.is_sidebar_expanded = False
         else:
-            # Expanded Mode: Show full text
+            # Expanded: Text Visible
             self.btn_scan.setText("  SCANNER")
             self.btn_history.setText("  HISTORY")
-            icon = " ☾" if self.is_dark_mode else " ☀"
-            text = "  DARK MODE" if self.is_dark_mode else "  LIGHT MODE"
-            self.btn_theme.setText(icon + text)
-            
-            # Reset alignment to Left
-            self.btn_scan.setStyleSheet("") # Reverts to styles.py default
-            self.btn_history.setStyleSheet("")
-            self.btn_theme.setStyleSheet("")
-            
+            self.btn_theme.setText("  DARK MODE" if self.is_dark_mode else "  LIGHT MODE")
             self.is_sidebar_expanded = True
 
     def toggle_theme(self):
         if self.is_dark_mode:
             self.setStyleSheet(Theme.LIGHT_STYLES)
-            self.btn_theme.setText(" ☀" if not self.is_sidebar_expanded else " ☀  LIGHT MODE")
+            # Update icons to dark color for light background
+            self.icon_scan = qta.icon('fa5s.qrcode', color='#555555')
+            self.icon_hist = qta.icon('fa5s.history', color='#555555')
+            self.btn_scan.setIcon(self.icon_scan)
+            self.btn_history.setIcon(self.icon_hist)
+            self.btn_theme.setIcon(self.icon_sun)
+            self.btn_theme.setText("" if not self.is_sidebar_expanded else "  LIGHT MODE")
             self.is_dark_mode = False
         else:
             self.setStyleSheet(Theme.DARK_STYLES)
-            self.btn_theme.setText(" ☾" if not self.is_sidebar_expanded else " ☾  DARK MODE")
+            self.icon_scan = qta.icon('fa5s.qrcode', color='#888888')
+            self.icon_hist = qta.icon('fa5s.history', color='#888888')
+            self.btn_scan.setIcon(self.icon_scan)
+            self.btn_history.setIcon(self.icon_hist)
+            self.btn_theme.setIcon(self.icon_moon)
+            self.btn_theme.setText("" if not self.is_sidebar_expanded else "  DARK MODE")
             self.is_dark_mode = True
