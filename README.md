@@ -1,85 +1,49 @@
-# QuishGuard - Advanced Phishing Detection System
+# QuishGuard: Forensic QR & Phishing Analyzer
 
-QuishGuard is a forensic cybersecurity tool designed to detect, analyze, and unmask malicious QR codes and URLs. Unlike standard scanners, it focuses on Blue Team analysis—revealing redirection chains, hidden scripts, and potential threats before the user opens the link.
+QuishGuard is a forensic cybersecurity tool designed for Blue Team operations. It automates the detection and analysis of malicious QR codes (Quishing) and obfuscated URLs within static files (Images/PDFs).
 
-## Features
+## Key Capabilities
 
-### Smart Detection Engine
-- **Multi-Format Scanning**: Drag and drop Images (.png, .jpg) or PDF Documents directly into the application.
-- **Batch Processing**: Automatically parses multi-page PDFs to identify and analyze every contained QR code.
-- **Heuristic Analysis**: Calculates a "Threat Score" based on redirection depth, IP hostnames, and suspicious keywords to categorize links as Safe, Suspicious, or High Risk.
+### Automated Threat Detection
+* **Multi-Vector Scanning**: Extracts QR codes from raw images (.png, .jpg) and parses multi-page PDF documents using PyMuPDF.
+* **Heuristic Engine**: Algorithms analyze URL structures for indicators of compromise (IoC), including:
+    * Deep redirection chains (greater than 3 hops).
+    * Direct IP usage (e.g., http://192.168.x.x).
+    * Suspicious keywords and executable extensions (.exe, .apk).
 
 ### Forensic Analysis
-- **Redirection Tracing**: Unmasks shortened links (e.g., bit.ly, tinyurl) to reveal the final destination server without visiting it.
-- **Defanging**: Automatically converts malicious URLs (e.g., `http://malware.com` becomes `hxxp[:]//malware[.]com`) to prevent accidental execution during analysis.
-- **Detailed Logs**: Displays the full hop-by-hop path of any link for forensic auditing.
+* **Safe URL Unshortening**: Traces redirection chains (e.g., bit.ly -> malicious.site) without executing payloads, allowing analysts to see the final destination safely.
+* **Defanging**: Automatically sanitizes URLs (e.g., hxxp[:]//bad[.]site) in logs to prevent accidental clicks.
+* **Audit Trails**: Maintains a local JSON-based history of all scans for evidentiary purposes.
 
-### Professional Reporting
-- **Scan History**: Automatically maintains a local audit trail of all previous scans.
-- **Export Reports**: Generates timestamped forensic text reports suitable for evidence or documentation.
+### Enterprise-Grade UI
+* **Asynchronous Processing**: Built with PyQt6 and QThread to ensure smooth UI performance during network-heavy analysis.
+* **Cyber-Brutalist Design**: High-contrast Dark Mode optimized for Security Operations Center (SOC) environments.
 
-### Modern UI
-- **Cyber-Brutalist Design**: Features a high-contrast Dark Mode interface built with PyQt6.
-- **Privacy First**: All analysis occurs locally on the host machine. No files are uploaded to external cloud servers.
+## Installation & Usage
 
----
+### Option 1: Standalone Installer (Windows)
+Download the latest QuishGuard_Setup.exe from the Releases page. No Python installation required.
 
-## Installation
+### Option 2: Run from Source
+1.  **Clone the Repository:**
+    git clone https://github.com/JAMPANIKOMAL/QuishGuard.git
+    cd QuishGuard
 
-### For End Users (Recommended)
-This project utilizes **Git LFS (Large File Storage)** to host the compiled binary. You do not need Python installed to use this version.
-
-1.  Navigate to the **dist** folder in this repository.
-2.  Download the file named **QuishGuard_Setup.exe**.
-3.  Run the installer. It will guide you through the setup process and automatically create shortcuts on your Desktop and Start Menu.
-
-### For Developers
-If you wish to modify the source code or build the application yourself, follow these steps.
-
-1.  **Clone the repository:**
-    ```bash
-    git clone [https://github.com/JAMPANIKOMAL/QuishGuard.git](https://github.com/JAMPANIKOMAL/QuishGuard.git)
-    ```
-
-2.  **Create and activate a virtual environment:**
-    ```bash
-    python -m venv venv
-    .\venv\Scripts\Activate
-    ```
-
-3.  **Install dependencies:**
-    ```bash
+2.  **Install Dependencies:**
     pip install -r requirements.txt
-    ```
 
-4.  **Run the application:**
-    ```bash
+3.  **Launch:**
     python main.py
-    ```
 
-## Building from Source
-To compile the executable and installer from the source code, use the included build script. This script handles the PyInstaller configuration, dependency collection, and installer generation.
+## Architecture
 
-```bash
-python build_final.py
-````
-
-After the build completes, the distribution files will be available in the `dist` directory.
-
-## Project Structure
-
-  - **src/core/**: Contains the scanner engine (OpenCV/PyMuPDF) and analyzer logic.
-  - **src/ui/**: Contains the PyQt6 interface logic and styling definitions.
-  - **src/utils/**: Helper utilities for history management.
-  - **installer/**: Source code for the custom Setup Wizard and Uninstaller.
-  - **dist/**: Destination for compiled executables (tracked via LFS).
-
-## Acknowledgments
-
-  - **Gemini (Google):** For providing extensive assistance in the architectural design, debugging, and development of the application logic and user interface.
-  - **QtAwesome:** For the FontAwesome icon implementation.
-  - **PyMuPDF & OpenCV:** For the core document and image processing capabilities.
+* **Core Engine**: OpenCV and pyzbar for optical recognition.
+* **Network Analysis**: Requests with custom headers for redirection tracing.
+* **Interface**: PyQt6 with custom widgets and QSS styling.
+* **Deployment**: PyInstaller with WinReg integration for native Windows installation.
 
 ## Disclaimer
+This tool is intended for educational and defensive security purposes only. The developer assumes no responsibility for misuse. Always analyze suspicious files in an isolated sandbox environment.
 
-This tool is developed for educational and defensive purposes only. The developers are not responsible for any misuse of this software. Ensure you have proper authorization before analyzing suspicious files or URLs.
+**Developed by Jampani Komal**
