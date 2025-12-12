@@ -83,3 +83,8 @@ After the build completes, the distribution files will be available in the `dist
 ## Disclaimer
 
 This tool is developed for educational and defensive purposes only. The developers are not responsible for any misuse of this software. Ensure you have proper authorization before analyzing suspicious files or URLs.
+
+## Future Roadmap
+- [ ] **Automated Testing:** Implementation of `pytest` suite for core analysis logic.
+- [ ] **CI/CD Pipeline:** GitHub Actions workflow for automated linting and building.
+- [ ] **Threat Intelligence:** Integration with VirusTotal API for enhanced reputation scoring.
